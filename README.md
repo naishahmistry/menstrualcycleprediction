@@ -11,7 +11,7 @@ We aim to expand on existing research by building a Bayesian Multinomial Logisti
 To further our project into a valuable tool for individuals to use on a regular basis, we aim to build an MLP that will forecast whether an individual will experience common symptoms associated with menstruation. An MLP is appropriate for this use case since we can utilize the sigmoid activation function to output the likelihood of a symptom occurring while considering multiple biometric and hormonal inputs, and it can also be extended by using alternative activation functions to solve multi-class problems, such as predicting the severity of these symptoms. The symptoms that we will predict include appetite, headaches, cramps, sore breasts, fatigue, sleep issues, mood swings, stress, food cravings, indigestion, and bloating.
 
 ## Literature Review
-Google Drive: https://drive.google.com/file/d/16nvjvVuTdLwit6LI7ekbAzWlqb3P8sbM/view?usp=sharing 
+Google Drive: [https://drive.google.com/file/d/16nvjvVuTdLwit6LI7ekbAzWlqb3P8sbM/view?usp=sharing ](https://drive.google.com/file/d/1be03RCNfOFz_mjY07947M-aF2ye-Nq3S/view?usp=sharing)
 
 ## Proof of Concept for Symptom Forecasting
 Google Drive: https://drive.google.com/file/d/1gXh8DNufAieB4CctkAskaMIF40juZkIq/view?usp=sharing 
