@@ -4,47 +4,23 @@ output: html_document
 date: "2026-04-01"
 ---
 ```{r}
-library(MCMCpack)
 library(brms)
 ```
 
-```{r}
-# load data
-data <- read.csv('data.csv')
-head(data)
-```
 
 ```{r}
-# feature set up
-feature_cols <- c(
-  "day_in_study",
-  "active_mins",
-  "glucose_mean",
-  "rhr_mean",
-  "sleep_score_overall",
-  "lh",
-  "estrogen",
-  "sleep_efficiency_mean"
-)
-
-phase_df <- data
-phase_df <- phase_df[, c(feature_cols, "phase")]
-# drop missing rows
-phase_df <- phase_df[complete.cases(phase_df), ]
-# scale numeric features 
-phase_df[, feature_cols] <- scale(phase_df[, feature_cols])
-# convert phase to factor
+# Load data from separately cleaned file & create phase factors
+phase_df <- read.csv('cleaned_data.csv')
 phase_df$phase <- as.factor(phase_df$phase)
 
-phase_df
-
+head(phase_df)
 ```
 
 ```{r}
-# Default priors
+# Default prior for selected features (chosen to avoid redundancy)
 prior <- default_prior(
-  phase ~ day_in_study + active_mins + glucose_mean + rhr_mean +
-    sleep_score_overall + lh + estrogen + sleep_efficiency_mean,
+  phase ~ active_mins + glucose_mean + rhr_mean + sleep_efficiency_mean + 
+    sleep_score_overall + sleep_score_revitalization + lh + estrogen,
   data = phase_df,
   family = categorical("logit")
 )
@@ -52,7 +28,7 @@ prior <- default_prior(
 prior
 ```
 ```{r}
-# manual normal prior
+# Manual normal prior
 manual_prior <- c(
   prior(normal(0, 1), class = "Intercept", dpar = "muFollicular"),
   prior(normal(0, 1), class = "Intercept", dpar = "muLuteal"),
@@ -70,8 +46,8 @@ manual_prior
 ```{r}
 # Fit Bayesian categorical logistic regression
 phase_brm <- brm(
-  phase ~ day_in_study + active_mins + glucose_mean + rhr_mean +
-    sleep_score_overall + lh + estrogen + sleep_efficiency_mean,
+  phase ~ active_mins + glucose_mean + rhr_mean + sleep_efficiency_mean + 
+    sleep_score_overall + sleep_score_revitalization + lh + estrogen,
   family = categorical("logit"),
   data = phase_df,
   chains = 4,
@@ -89,25 +65,21 @@ summary(phase_brm)
 ```
 
 ```{r}
-# Plot to check convergence
-#plot(phase_brm)
-```
-
-```{r}
+# Conditional effects plots for each feature
 plot(conditional_effects(phase_brm, "active_mins", categorical=TRUE))
 plot(conditional_effects(phase_brm, "glucose_mean", categorical=TRUE))
 plot(conditional_effects(phase_brm, "rhr_mean", categorical=TRUE))
+plot(conditional_effects(phase_brm, "sleep_efficiency_mean", categorical=TRUE))
 plot(conditional_effects(phase_brm, "sleep_score_overall", categorical=TRUE))
+plot(conditional_effects(phase_brm, "sleep_score_revitalization", categorical=TRUE))
 plot(conditional_effects(phase_brm, "lh", categorical=TRUE))
 plot(conditional_effects(phase_brm, "estrogen", categorical=TRUE))
-plot(conditional_effects(phase_brm, "sleep_efficiency_mean", categorical=TRUE))
 ```
 
 # POSTERIOR_PREDICT
 ```{r}
-# Posterior predictive distribution
+# Posterior predictive distribution 
 post_preds <- posterior_predict(phase_brm)
-head(post_preds)
 ```
 
 ```{r}
@@ -155,23 +127,27 @@ head(mean_probs)
 ```
 
 ```{r}
+# Predict class using highest probability
 pred_class <- apply(mean_probs, 1, which.max)
 pred_labels <- phase_levels[pred_class]
 actual <- phase_df$phase
 ```
 
 ```{r}
+# Accuracy
 accuracy <- mean(pred_labels == actual)
 print(accuracy)
 ```
 
 ```{r}
+# Confusion matrix
 table(Predicted = pred_labels, Actual = actual)
 ```
 # TRAIN TEST SPLIT
 ```{r}
 set.seed(42)
 
+# Splitting data into 70/30 training/test
 n <- nrow(phase_df)
 train_idx <- sample(1:n, size = 0.7 * n)
 
@@ -180,9 +156,10 @@ test_df  <- phase_df[-train_idx, ]
 ```
 
 ```{r}
+# Fit model on training data with manual prior
 train_phase_brm <- brm(
-  phase ~ day_in_study + active_mins + glucose_mean + rhr_mean +
-    sleep_score_overall + lh + estrogen + sleep_efficiency_mean,
+  phase ~ active_mins + glucose_mean + rhr_mean + sleep_efficiency_mean + 
+    sleep_score_overall + sleep_score_revitalization + lh + estrogen,
   family = categorical("logit"),
   data = train_df,
   chains = 4,
@@ -193,6 +170,7 @@ train_phase_brm <- brm(
 )
 ```
 ```{r}
+# Predict on test set
 post_probs_test <- posterior_epred(train_phase_brm, newdata = test_df)
 
 mean_probs_test <- apply(post_probs_test, c(2,3), mean)
@@ -204,26 +182,59 @@ tt_actual <- test_df$phase
 ```
 
 ```{r}
+# Test accuracy
 tt_accuracy <- mean(tt_pred_labels == tt_actual)
 print(tt_accuracy)
 ```
 
 ```{r}
+# Test confusion matrix
 table(Predicted = tt_pred_labels, Actual = tt_actual)
 ```
 
 ```{r}
+# Example 
 mean_probs_test[1,]
 ```
 
 ```{r}
+# Conditional effects plots for training set
 plot(conditional_effects(train_phase_brm, "active_mins", categorical=TRUE))
 plot(conditional_effects(train_phase_brm, "glucose_mean", categorical=TRUE))
 plot(conditional_effects(train_phase_brm, "rhr_mean", categorical=TRUE))
+plot(conditional_effects(train_phase_brm, "sleep_efficiency_mean", categorical=TRUE))
 plot(conditional_effects(train_phase_brm, "sleep_score_overall", categorical=TRUE))
+plot(conditional_effects(train_phase_brm, "sleep_score_revitalization", categorical=TRUE))
 plot(conditional_effects(train_phase_brm, "lh", categorical=TRUE))
 plot(conditional_effects(train_phase_brm, "estrogen", categorical=TRUE))
-plot(conditional_effects(train_phase_brm, "sleep_efficiency_mean", categorical=TRUE))
+```
+
+# Test model: predict phase for new observation in Fertility phase
+```{r}
+# New synthetic observation representing Fertility phase with appropriate feature values
+new_obs <- data.frame(
+  active_mins = 110,
+  glucose_mean = 5.3,
+  rhr_mean = 78,
+  sleep_efficiency_mean = 75,
+  sleep_score_overall = 62,
+  sleep_score_revitalization = 22,
+  lh = 6.5, 
+  estrogen = 325 
+)
+```
+
+```{r}
+# Posterior predictions
+post_probs_new <- posterior_epred(phase_brm, newdata = new_person)
+```
+
+```{r}
+# Average across posterior draws
+mean_probs_new <- apply(post_probs_new, c(2,3), mean)
+colnames(mean_probs_new) <- levels(phase_df$phase)
+
+mean_probs_new
 ```
 
 ```{r}
@@ -233,45 +244,4 @@ plot(conditional_effects(train_phase_brm, "sleep_efficiency_mean", categorical=T
 ```{r}
 
 ```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
 
