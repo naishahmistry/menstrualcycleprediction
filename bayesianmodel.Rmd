@@ -1,0 +1,277 @@
+---
+title: "bayesianmodel"
+output: html_document
+date: "2026-04-01"
+---
+```{r}
+library(MCMCpack)
+library(brms)
+```
+
+```{r}
+# load data
+data <- read.csv('data.csv')
+head(data)
+```
+
+```{r}
+# feature set up
+feature_cols <- c(
+  "day_in_study",
+  "active_mins",
+  "glucose_mean",
+  "rhr_mean",
+  "sleep_score_overall",
+  "lh",
+  "estrogen",
+  "sleep_efficiency_mean"
+)
+
+phase_df <- data
+phase_df <- phase_df[, c(feature_cols, "phase")]
+# drop missing rows
+phase_df <- phase_df[complete.cases(phase_df), ]
+# scale numeric features 
+phase_df[, feature_cols] <- scale(phase_df[, feature_cols])
+# convert phase to factor
+phase_df$phase <- as.factor(phase_df$phase)
+
+phase_df
+
+```
+
+```{r}
+# Default priors
+prior <- default_prior(
+  phase ~ day_in_study + active_mins + glucose_mean + rhr_mean +
+    sleep_score_overall + lh + estrogen + sleep_efficiency_mean,
+  data = phase_df,
+  family = categorical("logit")
+)
+
+prior
+```
+```{r}
+# manual normal prior
+manual_prior <- c(
+  prior(normal(0, 1), class = "Intercept", dpar = "muFollicular"),
+  prior(normal(0, 1), class = "Intercept", dpar = "muLuteal"),
+  prior(normal(0, 1), class = "Intercept", dpar = "muMenstrual"),
+
+  prior(normal(0, 1), class = "b", dpar = "muFollicular"),
+  prior(normal(0, 1), class = "b", dpar = "muLuteal"),
+  prior(normal(0, 1), class = "b", dpar = "muMenstrual")
+)
+
+manual_prior
+```
+
+
+```{r}
+# Fit Bayesian categorical logistic regression
+phase_brm <- brm(
+  phase ~ day_in_study + active_mins + glucose_mean + rhr_mean +
+    sleep_score_overall + lh + estrogen + sleep_efficiency_mean,
+  family = categorical("logit"),
+  data = phase_df,
+  chains = 4,
+  cores = getOption("mc.cores", 1),
+  iter = 1000,
+  warmup = 180,
+  thin = 2,
+  prior = manual_prior
+)
+```
+
+```{r}
+# Overall summary
+summary(phase_brm)
+```
+
+```{r}
+# Plot to check convergence
+#plot(phase_brm)
+```
+
+```{r}
+plot(conditional_effects(phase_brm, "active_mins", categorical=TRUE))
+plot(conditional_effects(phase_brm, "glucose_mean", categorical=TRUE))
+plot(conditional_effects(phase_brm, "rhr_mean", categorical=TRUE))
+plot(conditional_effects(phase_brm, "sleep_score_overall", categorical=TRUE))
+plot(conditional_effects(phase_brm, "lh", categorical=TRUE))
+plot(conditional_effects(phase_brm, "estrogen", categorical=TRUE))
+plot(conditional_effects(phase_brm, "sleep_efficiency_mean", categorical=TRUE))
+```
+
+# POSTERIOR_PREDICT
+```{r}
+# Posterior predictive distribution
+post_preds <- posterior_predict(phase_brm)
+head(post_preds)
+```
+
+```{r}
+# Most common predicted class for each observation
+pred_class <- apply(post_preds, 2, function(x) {
+  as.numeric(names(sort(table(x), decreasing = TRUE))[1])
+})
+```
+
+```{r}
+# Map predicted class index back to phase label
+phase_levels <- levels(phase_df$phase)
+pred_labels <- phase_levels[pred_class]
+```
+
+```{r}
+# Actual labels
+actual <- phase_df$phase
+```
+
+```{r}
+# Accuracy
+accuracy <- mean(pred_labels == actual)
+print(accuracy)
+```
+
+```{r}
+# Confusion matrix
+table(Predicted = pred_labels, Actual = actual)
+```
+
+# POSTERIOR_EPRED
+```{r}
+# Posterior expected probabilities for each phase
+post_probs <- posterior_epred(phase_brm)
+dim(post_probs)
+```
+
+```{r}
+# Average posterior probability for each observation and class
+mean_probs <- apply(post_probs, c(2, 3), mean)
+colnames(mean_probs) <- phase_levels
+
+head(mean_probs)
+```
+
+```{r}
+pred_class <- apply(mean_probs, 1, which.max)
+pred_labels <- phase_levels[pred_class]
+actual <- phase_df$phase
+```
+
+```{r}
+accuracy <- mean(pred_labels == actual)
+print(accuracy)
+```
+
+```{r}
+table(Predicted = pred_labels, Actual = actual)
+```
+# TRAIN TEST SPLIT
+```{r}
+set.seed(42)
+
+n <- nrow(phase_df)
+train_idx <- sample(1:n, size = 0.7 * n)
+
+train_df <- phase_df[train_idx, ]
+test_df  <- phase_df[-train_idx, ]
+```
+
+```{r}
+train_phase_brm <- brm(
+  phase ~ day_in_study + active_mins + glucose_mean + rhr_mean +
+    sleep_score_overall + lh + estrogen + sleep_efficiency_mean,
+  family = categorical("logit"),
+  data = train_df,
+  chains = 4,
+  iter = 1000,
+  warmup = 180,
+  thin = 2,
+  prior = manual_prior
+)
+```
+```{r}
+post_probs_test <- posterior_epred(train_phase_brm, newdata = test_df)
+
+mean_probs_test <- apply(post_probs_test, c(2,3), mean)
+
+tt_pred_class <- apply(mean_probs_test, 1, which.max)
+tt_pred_labels <- levels(train_df$phase)[tt_pred_class]
+
+tt_actual <- test_df$phase
+```
+
+```{r}
+tt_accuracy <- mean(tt_pred_labels == tt_actual)
+print(tt_accuracy)
+```
+
+```{r}
+table(Predicted = tt_pred_labels, Actual = tt_actual)
+```
+
+```{r}
+mean_probs_test[1,]
+```
+
+```{r}
+plot(conditional_effects(train_phase_brm, "active_mins", categorical=TRUE))
+plot(conditional_effects(train_phase_brm, "glucose_mean", categorical=TRUE))
+plot(conditional_effects(train_phase_brm, "rhr_mean", categorical=TRUE))
+plot(conditional_effects(train_phase_brm, "sleep_score_overall", categorical=TRUE))
+plot(conditional_effects(train_phase_brm, "lh", categorical=TRUE))
+plot(conditional_effects(train_phase_brm, "estrogen", categorical=TRUE))
+plot(conditional_effects(train_phase_brm, "sleep_efficiency_mean", categorical=TRUE))
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
