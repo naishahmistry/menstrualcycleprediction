@@ -65,6 +65,11 @@ summary(phase_brm)
 ```
 
 ```{r}
+# Plot convergence
+plot(phase_brm) 
+```
+
+```{r}
 # Conditional effects plots for each feature
 plot(conditional_effects(phase_brm, "active_mins", categorical=TRUE))
 plot(conditional_effects(phase_brm, "glucose_mean", categorical=TRUE))
@@ -237,11 +242,4 @@ colnames(mean_probs_new) <- levels(phase_df$phase)
 mean_probs_new
 ```
 
-```{r}
-
-```
-
-```{r}
-
-```
 
